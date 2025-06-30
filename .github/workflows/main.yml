@@ -1,4 +1,4 @@
-name: Notify n8n on release
+name: Notify n8n on release and Update Version
 
 on:
   release:
@@ -7,47 +7,74 @@ on:
 jobs:
   notify-n8n:
     runs-on: ubuntu-latest
+    # Définir les permissions pour que le GITHUB_TOKEN puisse pousser des commits
+    permissions:
+      contents: write
+      
     steps:
     - name: Checkout code with full history
       uses: actions/checkout@v4
       with:
-        # 0 signifie "télécharger tout l'historique". C'est la clé de la solution.
+        # 0 signifie "télécharger tout l'historique". C'est nécessaire pour git.
         fetch-depth: 0
 
     - name: Get previous tag
       id: get_previous_tag
       run: |
-        # Récupère le nom du tag précédent le tag de la release actuelle
-        # Cette commande est plus robuste que de trier toutes les tags
         previous_tag=$(git describe --tags --abbrev=0 ${{ github.event.release.tag_name }}^ 2>/dev/null || echo "")
         echo "previous_tag=$previous_tag" >> $GITHUB_OUTPUT
 
     - name: Get commit list between releases
       id: get_commits
       run: |
-        # Utilise le tag de la release directement depuis l'événement GitHub
         new_tag="${{ github.event.release.tag_name }}"
         old_tag="${{ steps.get_previous_tag.outputs.previous_tag }}"
 
-        # Gère le cas de la toute première release où il n'y a pas de tag précédent
         if [ -z "$old_tag" ]; then
           echo "No previous tag found, using initial commit."
-          # Récupère tous les commits jusqu'à la nouvelle release
           commits=$(git log $new_tag --pretty=format:"- %s (%h)")
         else
           echo "Getting commits between $old_tag and $new_tag"
-          # Récupère les commits entre l'ancien et le nouveau tag
           commits=$(git log $old_tag..$new_tag --pretty=format:"- %s (%h)")
         fi
         
-        # Prépare la variable multi-lignes pour l'étape suivante
         echo "commits<<EOF" >> $GITHUB_OUTPUT
         echo "$commits" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
 
+    - name: Update theme_version in settings_schema.json
+      run: |
+        # Récupère le nom du tag et supprime le préfixe 'v' s'il existe
+        VERSION_NUMBER=$(echo "${{ github.event.release.tag_name }}" | sed 's/^v//')
+        
+        # Chemin vers le fichier à modifier
+        FILE_PATH="config/settings_schema.json"
+
+        # Utilise jq pour mettre à jour la version du thème de manière robuste
+        # La commande map(...) garantit que toute la structure du fichier est conservée
+        jq --arg version "$VERSION_NUMBER" \
+          'map(if .name == "theme_info" then .theme_version = $version else . end)' \
+          "$FILE_PATH" > tmp.json && mv tmp.json "$FILE_PATH"
+        
+        echo "File $FILE_PATH updated with version $VERSION_NUMBER"
+
+    - name: Commit and push changes
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add config/settings_schema.json
+        
+        # Vérifie s'il y a des modifications à commiter pour éviter un commit vide
+        if git diff --staged --quiet; then
+          echo "No changes to commit."
+        else
+          git commit -m "Chore: Update theme version to ${{ github.event.release.tag_name }}"
+          # Pousse les changements vers la branche associée au tag
+          git push
+        fi
+        
     - name: Send to n8n webhook
       run: |
-        # Construit le JSON de manière sécurisée avec jq
         payload=$(jq -n \
           --arg tag "${{ github.event.release.tag_name }}" \
           --arg body "${{ github.event.release.body }}" \
