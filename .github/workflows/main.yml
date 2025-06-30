@@ -55,9 +55,9 @@ jobs:
           '{tag: $tag, release_notes: $body, commits: $commits}')
           
         echo "Sending payload to n8n:"
-        echo "$payload"
+        echo "$payload" 
 
         curl -X POST \
              -H "Content-Type: application/json" \
              -d "$payload" \
-             "${{ secrets.N8N_RELEASE_WEBHOOK }}"
+             "https://mintbikes.app.n8n.cloud/webhook-test/a263b507-0ec1-4b39-9fdb-4c2bbfe17d3a"
