@@ -7,39 +7,57 @@ on:
 jobs:
   notify-n8n:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+    - name: Checkout code with full history
+      uses: actions/checkout@v4
+      with:
+        # 0 signifie "télécharger tout l'historique". C'est la clé de la solution.
+        fetch-depth: 0
 
-    - name: Get the last two tags
-      id: get_tags
+    - name: Get previous tag
+      id: get_previous_tag
       run: |
-        # Récupère les deux dernières tags (la plus récente d'abord)
-        tags=$(git tag --sort=-creatordate | head -n 2)
-        echo "tags=$tags" >> $GITHUB_OUTPUT
-
-    - name: Extract tags
-      id: extract_tags
-      run: |
-        tags=(${{ steps.get_tags.outputs.tags }})
-        new_tag=${tags[0]}
-        old_tag=${tags[1]}
-        echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
-        echo "old_tag=$old_tag" >> $GITHUB_OUTPUT
+        # Récupère le nom du tag précédent le tag de la release actuelle
+        # Cette commande est plus robuste que de trier toutes les tags
+        previous_tag=$(git describe --tags --abbrev=0 ${{ github.event.release.tag_name }}^ 2>/dev/null || echo "")
+        echo "previous_tag=$previous_tag" >> $GITHUB_OUTPUT
 
     - name: Get commit list between releases
       id: get_commits
       run: |
-        commits=$(git log ${{ steps.extract_tags.outputs.old_tag }}..${{ steps.extract_tags.outputs.new_tag }} --pretty=format:"%h %s")
+        # Utilise le tag de la release directement depuis l'événement GitHub
+        new_tag="${{ github.event.release.tag_name }}"
+        old_tag="${{ steps.get_previous_tag.outputs.previous_tag }}"
+
+        # Gère le cas de la toute première release où il n'y a pas de tag précédent
+        if [ -z "$old_tag" ]; then
+          echo "No previous tag found, using initial commit."
+          # Récupère tous les commits jusqu'à la nouvelle release
+          commits=$(git log $new_tag --pretty=format:"- %s (%h)")
+        else
+          echo "Getting commits between $old_tag and $new_tag"
+          # Récupère les commits entre l'ancien et le nouveau tag
+          commits=$(git log $old_tag..$new_tag --pretty=format:"- %s (%h)")
+        fi
+        
+        # Prépare la variable multi-lignes pour l'étape suivante
         echo "commits<<EOF" >> $GITHUB_OUTPUT
         echo "$commits" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
 
     - name: Send to n8n webhook
       run: |
+        # Construit le JSON de manière sécurisée avec jq
         payload=$(jq -n \
-          --arg tag "${{ steps.extract_tags.outputs.new_tag }}" \
+          --arg tag "${{ github.event.release.tag_name }}" \
+          --arg body "${{ github.event.release.body }}" \
           --arg commits "${{ steps.get_commits.outputs.commits }}" \
-          '{tag: $tag, commits: $commits}')
-        curl -X POST -H "Content-Type: application/json" -d "$payload" "https://mintbikes.app.n8n.cloud/webhook-test/a263b507-0ec1-4b39-9fdb-4c2bbfe17d3a"
+          '{tag: $tag, release_notes: $body, commits: $commits}')
+          
+        echo "Sending payload to n8n:"
+        echo "$payload"
+
+        curl -X POST \
+             -H "Content-Type: application/json" \
+             -d "$payload" \
+             "${{ secrets.N8N_RELEASE_WEBHOOK }}"
