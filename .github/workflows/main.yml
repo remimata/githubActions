@@ -60,4 +60,4 @@ jobs:
         curl -X POST \
              -H "Content-Type: application/json" \
              -d "$payload" \
-             "https://mintbikes.app.n8n.cloud/webhook-test/a263b507-0ec1-4b39-9fdb-4c2bbfe17d3a"
+             "${{ secrets.N8N_RELEASE_WEBHOOK }}"
