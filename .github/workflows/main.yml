@@ -1,0 +1,45 @@
+name: Notify n8n on release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  notify-n8n:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Get the last two tags
+      id: get_tags
+      run: |
+        # Récupère les deux dernières tags (la plus récente d'abord)
+        tags=$(git tag --sort=-creatordate | head -n 2)
+        echo "tags=$tags" >> $GITHUB_OUTPUT
+
+    - name: Extract tags
+      id: extract_tags
+      run: |
+        tags=(${{ steps.get_tags.outputs.tags }})
+        new_tag=${tags[0]}
+        old_tag=${tags[1]}
+        echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
+        echo "old_tag=$old_tag" >> $GITHUB_OUTPUT
+
+    - name: Get commit list between releases
+      id: get_commits
+      run: |
+        commits=$(git log ${{ steps.extract_tags.outputs.old_tag }}..${{ steps.extract_tags.outputs.new_tag }} --pretty=format:"%h %s")
+        echo "commits<<EOF" >> $GITHUB_OUTPUT
+        echo "$commits" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Send to n8n webhook
+      run: |
+        payload=$(jq -n \
+          --arg tag "${{ steps.extract_tags.outputs.new_tag }}" \
+          --arg commits "${{ steps.get_commits.outputs.commits }}" \
+          '{tag: $tag, commits: $commits}')
+        curl -X POST -H "Content-Type: application/json" -d "$payload" "https://mintbikes.app.n8n.cloud/webhook-test/a263b507-0ec1-4b39-9fdb-4c2bbfe17d3a"
