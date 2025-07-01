@@ -51,15 +51,15 @@ jobs:
       env:
         PERSONAL_GH_TOKEN: ${{ secrets.PERSONAL_GH_TOKEN }}
       run: |
-        git config user.name "Votre Nom"
-        git config user.email "votre@email.com"
+        git config user.name "Remi test"
+        git config user.email "remi.mata13@gmail.com"
         git add config/settings_schema.json
         
         if git diff --staged --quiet; then
           echo "No changes to commit."
         else
           git commit -m "Chore: Update theme version to ${{ github.event.release.tag_name }}"
-          git remote set-url origin https://${{ github.actor }}:$PERSONAL_GH_TOKEN@github.com/${{ github.repository }}.git
+          git remote set-url origin https://${{ github.actor }}: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@github.com/${{ github.repository }}.git
           git push origin HEAD:${{ github.event.release.target_commitish }}
         fi
         
