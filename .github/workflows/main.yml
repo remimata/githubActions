@@ -11,10 +11,14 @@ jobs:
       contents: write
       
     steps:
-    - name: Checkout code with full history
+    - name: Checkout target branch
       uses: actions/checkout@v4
       with:
+        ref: ${{ github.event.release.target_commitish }}
         fetch-depth: 0
+
+    - name: Pull latest changes
+      run: git pull
 
     - name: Get previous tag
       id: get_previous_tag
@@ -40,26 +44,29 @@ jobs:
         echo "$commits" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
 
-    - name: Update theme_version in settings_schema.json
+    - name: Update theme_version
       run: |
         VERSION_NUMBER=$(echo "${{ github.event.release.tag_name }}" | sed 's/^v//')
         FILE_PATH="config/settings_schema.json"
-        jq --arg version "$VERSION_NUMBER" 'map(if .name == "theme_info" then .theme_version = $version else . end)' "$FILE_PATH" > tmp.json && mv tmp.json "$FILE_PATH"
-        echo "File $FILE_PATH updated with version $VERSION_NUMBER"
+        jq --arg version "$VERSION_NUMBER" 'map(if .name == "theme_info" then .theme_version = $version else . end)' "$FILE_PATH" > tmp.json
+        mv tmp.json "$FILE_PATH"
+        echo "Updated $FILE_PATH to $VERSION_NUMBER"
 
     - name: Commit and push changes
       env:
         PERSONAL_GH_TOKEN: ${{ secrets.PERSONAL_GH_TOKEN }}
       run: |
-        git config user.name "Remi test"
-        git config user.email "remi.mata13@gmail.com"
+        git config user.name "mintbikes"
+        git config user.email "mintadmin@mint-bikes.com"
         git add config/settings_schema.json
         
         if git diff --staged --quiet; then
           echo "No changes to commit."
         else
-          git commit -m "Chore: Update theme version to ${{ github.event.release.tag_name }}"
-          git remote set-url origin https://${{ github.actor }}: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@github.com/${{ github.repository }}.git
+          git commit -S -m "Chore: Update theme version to ${{ github.event.release.tag_name }}"
+          git remote set-url origin https://${{ github.actor }}:$PERSONAL_GH_TOKEN@github.com/${{ github.repository }}.git
+          # Pull and rebase before pushing
+          git pull --rebase
           git push origin HEAD:${{ github.event.release.target_commitish }}
         fi
         
@@ -71,9 +78,6 @@ jobs:
           --arg commits "${{ steps.get_commits.outputs.commits }}" \
           '{tag: $tag, release_notes: $body, commits: $commits}')
           
-        echo "Sending payload to n8n:"
-        echo "$payload" 
-
         curl -X POST \
              -H "Content-Type: application/json" \
              -d "$payload" \
