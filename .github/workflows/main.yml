@@ -44,30 +44,25 @@ jobs:
         echo "$commits" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
 
-    - name: Update theme_version
-      run: |
-        VERSION_NUMBER=$(echo "${{ github.event.release.tag_name }}" | sed 's/^v//')
-        FILE_PATH="config/settings_schema.json"
-        jq --arg version "$VERSION_NUMBER" 'map(if .name == "theme_info" then .theme_version = $version else . end)' "$FILE_PATH" > tmp.json
-        mv tmp.json "$FILE_PATH"
-        echo "Updated $FILE_PATH to $VERSION_NUMBER"
-
-    - name: Commit and push changes
-      env:
-        PERSONAL_GH_TOKEN: ${{ secrets.PERSONAL_GH_TOKEN }}
-      run: |
-        git config user.name "remimata"
-        git config user.email "remi.mata13@gmail.com"
-        git add config/settings_schema.json
-        
-        if git diff --staged --quiet; then
-          echo "No changes to commit."
-        else
-          git commit -m "Chore: Update theme version to ${{ github.event.release.tag_name }}"
-          git remote set-url origin https://x-access-token:$PERSONAL_GH_TOKEN@github.com/remimata/githubActions.git
-          git pull --rebase
-          git push origin HEAD:${{ github.event.release.target_commitish }}
-        fi
+    - uses: actions/checkout@v4
+    - run: |
+          VERSION_NUMBER=$(echo "${{ github.event.release.tag_name }}" | sed 's/^v//')
+          FILE_PATH="config/settings_schema.json"
+          jq --arg version "$VERSION_NUMBER" 'map(if .name == "theme_info" then .theme_version = $version else . end)' "$FILE_PATH" > tmp.json
+          mv tmp.json "$FILE_PATH"
+          echo "Updated $FILE_PATH to $VERSION_NUMBER"
+          git config user.name "remimata"
+          git config user.email "remi.mata13@gmail.com"
+          git add config/settings_schema.json
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Chore: Update theme version to ${{ github.event.release.tag_name }}"
+            git remote set-url origin https://x-access-token:$PERSONAL_GH_TOKEN@github.com/remimata/githubActions.git
+            git pull --rebase
+            git push
+          fi        
         
     - name: Send to n8n webhook
       run: |
