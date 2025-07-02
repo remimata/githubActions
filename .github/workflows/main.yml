@@ -52,15 +52,6 @@ jobs:
         mv tmp.json "$FILE_PATH"
         echo "Updated $FILE_PATH to $VERSION_NUMBER"
 
-    - name: Configure GPG
-      run: |
-        echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
-        git config --global user.signingkey "${{ secrets.GPG_KEY_ID }}"
-        git config --global commit.gpgsign true
-        echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
-        echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
-        gpgconf --kill gpg-agent
-
     - name: Commit and push changes
       env:
         PERSONAL_GH_TOKEN: ${{ secrets.PERSONAL_GH_TOKEN }}
@@ -72,7 +63,7 @@ jobs:
         if git diff --staged --quiet; then
           echo "No changes to commit."
         else
-          git commit -S -m "Chore: Update theme version to ${{ github.event.release.tag_name }}"
+          git commit -m "Chore: Update theme version to ${{ github.event.release.tag_name }}"
           git remote set-url origin https://${{ github.actor }}:$PERSONAL_GH_TOKEN@github.com/${{ github.repository }}.git
           git pull --rebase
           git push origin HEAD:${{ github.event.release.target_commitish }}
