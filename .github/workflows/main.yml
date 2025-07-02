@@ -64,7 +64,7 @@ jobs:
           echo "No changes to commit."
         else
           git commit -m "Chore: Update theme version to ${{ github.event.release.tag_name }}"
-          git remote set-url origin https://${{ github.actor }}:$PERSONAL_GH_TOKEN@github.com/${{ github.repository }}.git
+          git remote set-url origin https://x-access-token:$PERSONAL_GH_TOKEN@github.com/remimata/githubActions.git
           git pull --rebase
           git push origin HEAD:${{ github.event.release.target_commitish }}
         fi
