@@ -62,7 +62,7 @@ jobs:
             echo "No changes to commit."
           else
             git commit -m "Chore: Update theme version to ${{ github.event.release.tag_name }}"
-            git pull origin master --rebase
+            git pull --rebase
             git push
           fi        
         
