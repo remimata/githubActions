@@ -47,6 +47,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         token: ${{ secrets.PERSONAL_GH_TOKEN }}
+        ref: 'main'
     - run: |
           VERSION_NUMBER=$(echo "${{ github.event.release.tag_name }}" | sed 's/^v//')
           FILE_PATH="config/settings_schema.json"
