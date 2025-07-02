@@ -1,79 +1,83 @@
-name: Notify n8n on release & update version
+name: Notify n8n on release and Update Version
 
 on:
   release:
     types: [published]
 
 jobs:
-  release-bot:
+  notify-n8n:
     runs-on: ubuntu-latest
     permissions:
-      contents: write          # push dans la branche de PR
-      pull-requests: write     # créer + auto-merge la PR
-
+      contents: write
+      
     steps:
-    # 1. checkout complet
-    - uses: actions/checkout@v4
+    - name: Checkout target branch
+      uses: actions/checkout@v4
       with:
+        ref: ${{ github.event.release.target_commitish }}
         fetch-depth: 0
 
-    # 2. retrouver le tag précédent (inchangé)
-    - id: get_previous_tag
-      run: |
-        previous=$(git describe --tags --abbrev=0 ${{ github.event.release.tag_name }}^ 2>/dev/null || echo "")
-        echo "previous_tag=$previous" >> $GITHUB_OUTPUT
+    - name: Pull latest changes
+      run: git pull
 
-    # 3. liste des commits (inchangé)
-    - id: get_commits
+    - name: Get previous tag
+      id: get_previous_tag
       run: |
-        new="${{ github.event.release.tag_name }}"
-        old="${{ steps.get_previous_tag.outputs.previous_tag }}"
-        if [ -z "$old" ]; then
-          list=$(git log $new --pretty=format:"- %s (%h)")
+        previous_tag=$(git describe --tags --abbrev=0 ${{ github.event.release.tag_name }}^ 2>/dev/null || echo "")
+        echo "previous_tag=$previous_tag" >> $GITHUB_OUTPUT
+
+    - name: Get commit list between releases
+      id: get_commits
+      run: |
+        new_tag="${{ github.event.release.tag_name }}"
+        old_tag="${{ steps.get_previous_tag.outputs.previous_tag }}"
+
+        if [ -z "$old_tag" ]; then
+          echo "No previous tag found, using initial commit."
+          commits=$(git log $new_tag --pretty=format:"- %s (%h)")
         else
-          list=$(git log $old..$new --pretty=format:"- %s (%h)")
+          echo "Getting commits between $old_tag and $new_tag"
+          commits=$(git log $old_tag..$new_tag --pretty=format:"- %s (%h)")
         fi
+        
         echo "commits<<EOF" >> $GITHUB_OUTPUT
-        echo "$list" >> $GITHUB_OUTPUT
+        echo "$commits" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
 
-    # 4. bump de version dans settings_schema.json
-    - name: Bump theme_version
+    - name: Update theme_version
       run: |
-        ver=$(echo "${{ github.event.release.tag_name }}" | sed 's/^v//')
-        jq --arg v "$ver" 'map(if .name=="theme_info" then .theme_version=$v else . end)' \
-           config/settings_schema.json > tmp && mv tmp config/settings_schema.json
+        VERSION_NUMBER=$(echo "${{ github.event.release.tag_name }}" | sed 's/^v//')
+        FILE_PATH="config/settings_schema.json"
+        jq --arg version "$VERSION_NUMBER" 'map(if .name == "theme_info" then .theme_version = $version else . end)' "$FILE_PATH" > tmp.json
+        mv tmp.json "$FILE_PATH"
+        echo "Updated $FILE_PATH to $VERSION_NUMBER"
 
-    # 5. créer une PR signée + activer l’auto-merge squash
-    - name: Create PR
-      id: cpr
-      uses: peter-evans/create-pull-request@v7
-      with:
-        token: ${{ secrets.PERSONAL_GH_TOKEN }}   # PAT repo/* ou fine-grained
-        branch: release-bot/${{ github.run_id }}
-        commit-message: |
-          chore: bump theme version to ${{ github.event.release.tag_name }}
-        title: "chore: bump theme version to ${{ github.event.release.tag_name }}"
-        body: "Automated release bump."
-        sign-commits: true                        # commit « Verified » ✔
-
-    - name: Enable PR automerge (squash)
-      if: steps.cpr.outputs.pull-request-operation == 'created'
-      uses: peter-evans/enable-pull-request-automerge@v3
-      with:
-        token: ${{ secrets.PERSONAL_GH_TOKEN }}
-        pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
-        merge-method: squash                      # linéarité respectée
-
-    # 6. notifier n8n – exactement comme avant
-    - name: Send to n8n webhook
+    - name: Commit and push changes
       env:
-        TAG: ${{ github.event.release.tag_name }}
-        BODY: ${{ github.event.release.body }}
-        COMMITS: ${{ steps.get_commits.outputs.commits }}
-        URL: ${{ secrets.N8N_RELEASE_WEBHOOK }}
+        PERSONAL_GH_TOKEN: ${{ secrets.PERSONAL_GH_TOKEN }}
       run: |
-        payload=$(jq -n --arg tag "$TAG" --arg body "$BODY" \
-                     --arg commits "$COMMITS" \
-                     '{tag:$tag,release_notes:$body,commits:$commits}')
-        curl -X POST -H "Content-Type: application/json" -d "$payload" "$URL"
+        git config user.name "remimata"
+        git config user.email "remi.mata13@gmail.com"
+        git add config/settings_schema.json
+        
+        if git diff --staged --quiet; then
+          echo "No changes to commit."
+        else
+          git commit -m "Chore: Update theme version to ${{ github.event.release.tag_name }}"
+          git remote set-url origin https://x-access-token:$PERSONAL_GH_TOKEN@github.com/remimata/githubActions.git
+          git pull --rebase
+          git push origin HEAD:${{ github.event.release.target_commitish }}
+        fi
+        
+    - name: Send to n8n webhook
+      run: |
+        payload=$(jq -n \
+          --arg tag "${{ github.event.release.tag_name }}" \
+          --arg body "${{ github.event.release.body }}" \
+          --arg commits "${{ steps.get_commits.outputs.commits }}" \
+          '{tag: $tag, release_notes: $body, commits: $commits}')
+          
+        curl -X POST \
+             -H "Content-Type: application/json" \
+             -d "$payload" \
+             "${{ secrets.N8N_RELEASE_WEBHOOK }}"
