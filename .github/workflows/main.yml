@@ -45,6 +45,8 @@ jobs:
         echo "EOF" >> $GITHUB_OUTPUT
 
     - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.PERSONAL_GH_TOKEN }}
     - run: |
           VERSION_NUMBER=$(echo "${{ github.event.release.tag_name }}" | sed 's/^v//')
           FILE_PATH="config/settings_schema.json"
@@ -59,8 +61,7 @@ jobs:
             echo "No changes to commit."
           else
             git commit -m "Chore: Update theme version to ${{ github.event.release.tag_name }}"
-            git remote set-url origin https://x-access-token:$PERSONAL_GH_TOKEN@github.com/remimata/githubActions.git
-            git push origin HEAD:${{ github.event.release.target_commitish }}
+            git push
           fi        
         
     - name: Send to n8n webhook
