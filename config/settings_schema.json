@@ -20,7 +20,7 @@
         "id": "google_rating_text",
         "label": "Google rating text",
         "default": "<p>sur 0 avis<p>"
-      }
+      },
     ]
   },
   {
